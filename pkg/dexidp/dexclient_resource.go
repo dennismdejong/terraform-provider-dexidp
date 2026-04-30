@@ -7,10 +7,14 @@ import (
 	"time"
 
 	"github.com/dexidp/dex/api/v2"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
 	"github.com/dennismdejong/terraform-provider-dexidp/pkg/utils"
@@ -79,11 +83,23 @@ func (r *dexClientResoure) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Description: "The Secret of your Dex oauth2 client. Not required for public clients.",
 				Optional:    true,
 				Sensitive:   true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("public")),
+				},
 			},
 			"secret_wo": schema.StringAttribute{
 				Description: "The Secret of your Dex oauth2 client (write-only, not persisted to state).",
 				Optional:    true,
 				WriteOnly:   true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("public")),
+				},
 			},
 			"public": schema.BoolAttribute{
 				Optional: true,
@@ -205,21 +221,10 @@ response, err := r.client.GetClient(ctx, &getReq)
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *dexClientResoure) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state dexClientModel
+	var plan dexClientModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
-	diags = req.State.Get(ctx, &state)
-	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	// If secret changed, return error and advise recreate
-	if plan.Secret.ValueString() != state.Secret.ValueString() || plan.SecretWo.ValueString() != state.SecretWo.ValueString() {
-		resp.Diagnostics.AddError(
-			"Cannot update secret",
-			"The secret cannot be updated. Please destroy and recreate the client to change the secret.",
-		)
 		return
 	}
 

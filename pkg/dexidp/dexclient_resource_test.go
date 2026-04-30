@@ -68,6 +68,18 @@ resource "dexidp_client" "test_client_no_secret" {
 `,
 				ExpectError: regexp.MustCompile("secret is required"),
 			},
+			// Update secret testing (triggers recreation)
+			{
+				Config: GetProviderConfig() + `
+resource "dexidp_client" "test_client" {
+	client_id     = "test-client"
+	name          = "My Test Client"
+	secret        = "NewSecret"
+	redirect_uris = ["https://my-test-app.marcofranssen.nl/callback"]
+}
+`,
+				ExpectNonEmptyPlan: true,
+			},
 			// ImportState testing
 			{
 				ResourceName:            testResourceName,
