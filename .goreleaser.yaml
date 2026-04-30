@@ -35,11 +35,13 @@ builds:
         goarch: 'arm'
       - goos: darwin
         goarch: '386'
-    binary: '{{ .ProjectName }}_v{{ .Version }}'
+    binary: 'terraform-provider-dexidp'
 
 archives:
   - formats: ['zip']
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      - 'terraform-provider-dexidp*'
 
 checksum:
   extra_files:
