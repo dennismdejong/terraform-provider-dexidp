@@ -40,25 +40,25 @@ jobs:
         run: |
           mkdir -p release
           OUTPUT_NAME="terraform-provider-dexidp"
-          go build -ldflags="-s -w -X main.version=1.0.0 -X main.commit=${{ github.sha }}" -o "$OUTPUT_NAME" .
+          go build -ldflags="-s -w -X main.version=1.1.0 -X main.commit=${{ github.sha }}" -o "$OUTPUT_NAME" .
           if [ "$GOOS" = "windows" ]; then
             OUTPUT_NAME="${OUTPUT_NAME}.exe"
           fi
           cp "$OUTPUT_NAME" release/
           cd release
-          zip terraform-provider-dexidp_1.0.0_${{ matrix.zip }}.zip terraform-provider-dexidp*
+          zip terraform-provider-dexidp_1.1.0_${{ matrix.zip }}.zip terraform-provider-dexidp*
 
       - name: Create checksums
         run: |
           cd release
-          sha256sum terraform-provider-dexidp_1.0.0_*.zip > ../terraform-provider-dexidp_1.0.0_SHA256SUMS
+          sha256sum terraform-provider-dexidp_1.1.0_*.zip > ../terraform-provider-dexidp_1.1.0_SHA256SUMS
 
       - name: Upload release artifacts
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release/terraform-provider-dexidp_1.0.0_*.zip
-            terraform-provider-dexidp_1.0.0_SHA256SUMS
+            release/terraform-provider-dexidp_1.1.0_*.zip
+            terraform-provider-dexidp_1.1.0_SHA256SUMS
             terraform-registry-manifest.json
           draft: true
         env:
