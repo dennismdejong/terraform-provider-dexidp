@@ -3,6 +3,8 @@ package dexidp
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/dexidp/dex/api/v2"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -31,14 +33,19 @@ type dexClientResoure struct {
 }
 
 type dexClientModel struct {
-	ID           types.String `tfsdk:"id"`
-	ClientID     types.String `tfsdk:"client_id"`
-	Secret       types.String `tfsdk:"secret"`
-	Name         types.String `tfsdk:"name"`
-	Public       types.Bool   `tfsdk:"public"`
-	LogoURL      types.String `tfsdk:"logo_url"`
-	RedirectURIs types.List `tfsdk:"redirect_uris"`
-	TrustedPeers types.List `tfsdk:"trusted_peers"`
+	ID              types.String `tfsdk:"id"`
+	ClientID        types.String `tfsdk:"client_id"`
+	Secret          types.String `tfsdk:"secret"`
+	SecretWo        types.String `tfsdk:"secret_wo"`
+	Name            types.String `tfsdk:"name"`
+	Public          types.Bool   `tfsdk:"public"`
+	LogoURL         types.String `tfsdk:"logo_url"`
+	RedirectURIs    types.List   `tfsdk:"redirect_uris"`
+	TrustedPeers    types.List   `tfsdk:"trusted_peers"`
+}
+
+func isSerializationError(err error) bool {
+	return strings.Contains(err.Error(), "40001")
 }
 
 // Configure adds the provider configured client to the resource.
@@ -68,10 +75,15 @@ func (r *dexClientResoure) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Description: "The ID of your Dex oauth2 client.",
 				Required:    true,
 			},
-			"secret": schema.StringAttribute{
+"secret": schema.StringAttribute{
 				Description: "The Secret of your Dex oauth2 client. Not required for public clients.",
 				Optional:    true,
 				Sensitive:   true,
+			},
+			"secret_wo": schema.StringAttribute{
+				Description: "The Secret of your Dex oauth2 client (write-only, not persisted to state).",
+				Optional:    true,
+				WriteOnly:   true,
 			},
 			"public": schema.BoolAttribute{
 				Optional: true,
@@ -193,10 +205,21 @@ response, err := r.client.GetClient(ctx, &getReq)
 
 // Update updates the resource and sets the updated Terraform state on success.
 func (r *dexClientResoure) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan dexClientModel
+	var plan, state dexClientModel
 	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
+	diags = req.State.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// If secret changed, return error and advise recreate
+	if plan.Secret.ValueString() != state.Secret.ValueString() || plan.SecretWo.ValueString() != state.SecretWo.ValueString() {
+		resp.Diagnostics.AddError(
+			"Cannot update secret",
+			"The secret cannot be updated. Please destroy and recreate the client to change the secret.",
+		)
 		return
 	}
 
@@ -211,7 +234,20 @@ func (r *dexClientResoure) Update(ctx context.Context, req resource.UpdateReques
 		LogoUrl:      plan.LogoURL.ValueString(),
 	}
 
-	_, err := r.client.UpdateClient(ctx, &updateClientReq)
+	maxRetries := 3
+	var err error
+	for i := 0; i < maxRetries; i++ {
+		_, err = r.client.UpdateClient(ctx, &updateClientReq)
+		if err == nil {
+			break
+		}
+		if isSerializationError(err) {
+			time.Sleep(time.Duration(i+1) * 100 * time.Millisecond)
+			continue
+		}
+		break
+	}
+
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Dex Client",
@@ -220,7 +256,7 @@ func (r *dexClientResoure) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-		plan.ID = types.StringValue(plan.ClientID.ValueString())
+	plan.ID = types.StringValue(plan.ClientID.ValueString())
 
 	diags = resp.State.Set(ctx, plan)
 	resp.Diagnostics.Append(diags...)
